@@ -1,0 +1,217 @@
+<<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chyť LEGO Kocku 3.1 - Vybalansovaná Verzia</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; text-align: center; background: #0f172a; color: white; padding-top: 30px; margin: 0; user-select: none; }
+        .staty { display: flex; justify-content: center; gap: 30px; font-size: 18px; font-weight: bold; background: #1e293b; padding: 15px; border-radius: 8px; max-width: 400px; margin: 0 auto 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .stat-box span { color: #38bdf8; }
+        #best-score { color: #f59e0b !important; }
+        #hra-plocha { width: 450px; height: 450px; background: #1e293b; border: 4px solid #38bdf8; margin: 0 auto; position: relative; overflow: hidden; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        #kocka { width: 75px; height: 75px; background: #ffcc00; position: absolute; cursor: pointer; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: width 0.2s, height 0.2s, background-color 0.3s, transform 0.1s; }
+        #kocka:active { transform: scale(0.9); }
+        button { padding: 12px 24px; font-size: 16px; font-weight: bold; background: #38bdf8; color: #0f172a; border: none; border-radius: 6px; cursor: pointer; margin-top: 25px; transition: background 0.2s; }
+        button:hover { background: #0ea5e9; }
+        .level-up-flash { animation: flash 0.5s ease-out; }
+        @keyframes flash {
+            0% { border-color: #38bdf8; }
+            50% { border-color: #f59e0b; background: #334155; }
+            100% { border-color: #38bdf8; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🧱 LEGO Speed Clicker</h1>
+    
+    <div class="staty">
+        <div class="stat-box">Skóre: <span id="skore">0</span></div>
+        <div class="stat-box">Level: <span id="level">1</span></div>
+        <div class="stat-box">Čas: <span id="cas">15</span>s</div>
+    </div>
+    <div style="font-size: 14px; margin-bottom: 15px; color: #94a3b8;">🥇 Najlepšie skóre na tomto Macu: <span id="best-score">0</span></div>
+    
+    <div id="hra-plocha">
+        <div id="kocka" onclick="kliknutie()">🧱</div>
+    </div>
+
+    <button onclick="restartHry()">Spustiť novú hru</button>
+
+<script>
+    let skore = 0;
+    let level = 1;
+    let cas = 15;
+    let hraBezi = false;
+    
+    let casovyInterval;
+    let skakaciInterval;
+    let audioCtx = null;
+
+    // ⏱️ SPOMALENÉ RÝCHLOSTI (v milisekundách - čím vyššie číslo, tým dlhšie kocka čaká na mieste)
+    const rycshlostiLevelov = { 1: 2000, 2: 1600, 3: 1300, 4: 1000, 5: 800 };
+    // 📐 ZVÄČŠENÉ VEĽKOSTI KOCIEK (v pixeloch)
+    const velkostiKociek = { 1: 75, 2: 68, 3: 62, 4: 56, 5: 50 };
+    
+    const dizajnyLevelov = {
+        1: { emoji: "🧱", farba: "#ffcc00" },
+        2: { emoji: "💎", farba: "#00d2ff" },
+        3: { emoji: "🏆", farba: "#ff9f43" },
+        4: { emoji: "👾", farba: "#a55eea" },
+        5: { emoji: "🔥", farba: "#ff4d4d" }
+    };
+
+    const kocka = document.getElementById("kocka");
+    const plocha = document.getElementById("hra-plocha");
+    const skoreText = document.getElementById("skore");
+    const levelText = document.getElementById("level");
+    const casText = document.getElementById("cas");
+    const bestScoreText = document.getElementById("best-score");
+
+    let ulozeBestScore = localStorage.getItem("legoHighScore") || 0;
+    bestScoreText.innerText = ulozeBestScore;
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    function zahrajZvukKlik() {
+        if (!audioCtx) return;
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.1);
+    }
+
+    function zahrajMelodiuLevelUp() {
+        if (!audioCtx) return;
+        const tony = [523.25, 659.25, 783.99, 1046.50];
+        const dlzkaTonu = 0.1;
+        tony.forEach((frekvencia, index) => {
+            setTimeout(() => {
+                let osc = audioCtx.createOscillator();
+                let gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(frekvencia, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dlzkaTonu);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + dlzkaTonu);
+            }, index * 120);
+        });
+    }
+
+    function aktualizujVzhladKocky() {
+        let aktualnyDizajn = dizajnyLevelov[level] || dizajnyLevelov[1];
+        kocka.innerText = aktualnyDizajn.emoji;
+        kocka.style.backgroundColor = aktualnyDizajn.farba;
+        
+        let rozmerKocky = velkostiKociek[level] || 50;
+        kocka.style.width = rozmerKocky + "px";
+        kocka.style.height = rozmerKocky + "px";
+    }
+
+    function pohniKockou() {
+        if (!hraBezi) return;
+        
+        aktualizujVzhladKocky();
+        let rozmerKocky = velkostiKociek[level] || 50;
+        
+        let maxX = 450 - rozmerKocky;
+        let maxY = 450 - rozmerKocky;
+        
+        let x = Math.floor(Math.random() * maxX);
+        let y = Math.floor(Math.random() * maxY);
+        
+        kocka.style.left = x + "px";
+        kocka.style.top = y + "px";
+    }
+
+    function kliknutie() {
+        initAudio();
+        if (!hraBezi) return;
+        
+        zahrajZvukKlik();
+        
+        skore++;
+        skoreText.innerText = skore;
+        cas += 1;
+        casText.innerText = cas;
+
+        let novyLevel = Math.floor(skore / 10) + 1;
+        if (novyLevel > level && novyLevel <= 5) {
+            level = novyLevel;
+            levelText.innerText = level;
+            
+            zahrajMelodiuLevelUp();
+            
+            plocha.classList.add("level-up-flash");
+            setTimeout(() => plocha.classList.remove("level-up-flash"), 500);
+            
+            clearInterval(skakaciInterval);
+            skakaciInterval = setInterval(pohniKockou, rycshlostiLevelov[level]);
+        }
+        
+        pohniKockou();
+        
+        clearInterval(skakaciInterval);
+        skakaciInterval = setInterval(pohniKockou, rycshlostiLevelov[level]);
+    }
+
+    function odpocitavanie() {
+        cas--;
+        casText.innerText = cas;
+        
+        if (cas <= 0) {
+            hraBezi = false;
+            clearInterval(casovyInterval);
+            clearInterval(skakaciInterval);
+            
+            if (skore > ulozeBestScore) {
+                localStorage.setItem("legoHighScore", skore);
+                ulozeBestScore = skore;
+                bestScoreText.innerText = skore;
+                alert("🎉 NOVÝ REKORD! Tvoje finálne skóre je: " + skore + " (Dosiahol si Level " + level + ")");
+            } else {
+                alert("Koniec hry! Tvoje skóre: " + skore + " | Level: " + level);
+            }
+        }
+    }
+
+    function restartHry() {
+        initAudio();
+        skore = 0;
+        level = 1;
+        cas = 15;
+        hraBezi = true;
+        
+        skoreText.innerText = skore;
+        levelText.innerText = level;
+        casText.innerText = cas;
+        
+        aktualizujVzhladKocky();
+        pohniKockou();
+        
+        clearInterval(casovyInterval);
+        clearInterval(skakaciInterval);
+        
+        casovyInterval = setInterval(odpocitavanie, 1000);
+        skakaciInterval = setInterval(pohniKockou, rycshlostiLevelov[level]);
+    }
+
+    restartHry();
+</script>
+</body>
+</html>
