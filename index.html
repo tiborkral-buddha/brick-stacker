@@ -1,15 +1,20 @@
-<<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="sk">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chyť LEGO Kocku 3.1 - Vybalansovaná Verzia</title>
+    <title>Chyť LEGO Kocku 3.2 - CrazyGames Fix Edition</title>
+    <!-- 🎮 NAČÍTANIE OFICIÁLNEHO CRAZYGAMES HERNÉHO ENGINU (SDK) -->
+    <script src="https://crazygames.com"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; text-align: center; background: #0f172a; color: white; padding-top: 30px; margin: 0; user-select: none; }
         .staty { display: flex; justify-content: center; gap: 30px; font-size: 18px; font-weight: bold; background: #1e293b; padding: 15px; border-radius: 8px; max-width: 400px; margin: 0 auto 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .stat-box span { color: #38bdf8; }
         #best-score { color: #f59e0b !important; }
+        
+        /* 🎯 FIX: Pridané position: relative, aby kocka skákala IBA vo vnútri tohto boxu */
         #hra-plocha { width: 450px; height: 450px; background: #1e293b; border: 4px solid #38bdf8; margin: 0 auto; position: relative; overflow: hidden; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        
         #kocka { width: 75px; height: 75px; background: #ffcc00; position: absolute; cursor: pointer; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: width 0.2s, height 0.2s, background-color 0.3s, transform 0.1s; }
         #kocka:active { transform: scale(0.9); }
         button { padding: 12px 24px; font-size: 16px; font-weight: bold; background: #38bdf8; color: #0f172a; border: none; border-radius: 6px; cursor: pointer; margin-top: 25px; transition: background 0.2s; }
@@ -33,6 +38,7 @@
     </div>
     <div style="font-size: 14px; margin-bottom: 15px; color: #94a3b8;">🥇 Najlepšie skóre na tomto Macu: <span id="best-score">0</span></div>
     
+    <!-- Hracia plocha, v ktorej je kocka uzamknutá -->
     <div id="hra-plocha">
         <div id="kocka" onclick="kliknutie()">🧱</div>
     </div>
@@ -49,9 +55,10 @@
     let skakaciInterval;
     let audioCtx = null;
 
-    // ⏱️ SPOMALENÉ RÝCHLOSTI (v milisekundách - čím vyššie číslo, tým dlhšie kocka čaká na mieste)
+    // 🕹️ INICIALIZÁCIA CRAZYGAMES SDK
+    const cgSDK = window.CrazyGames ? window.CrazyGames.SDK : null;
+
     const rycshlostiLevelov = { 1: 2000, 2: 1600, 3: 1300, 4: 1000, 5: 800 };
-    // 📐 ZVÄČŠENÉ VEĽKOSTI KOCIEK (v pixeloch)
     const velkostiKociek = { 1: 75, 2: 68, 3: 62, 4: 56, 5: 50 };
     
     const dizajnyLevelov = {
@@ -129,6 +136,7 @@
         aktualizujVzhladKocky();
         let rozmerKocky = velkostiKociek[level] || 50;
         
+        // 🎯 Kocka teraz berie do úvahy rozmer plochy 450x450 px a neodskakuje von
         let maxX = 450 - rozmerKocky;
         let maxY = 450 - rozmerKocky;
         
@@ -179,19 +187,37 @@
             clearInterval(casovyInterval);
             clearInterval(skakaciInterval);
             
-            if (skore > ulozeBestScore) {
-                localStorage.setItem("legoHighScore", skore);
-                ulozeBestScore = skore;
-                bestScoreText.innerText = skore;
-                alert("🎉 NOVÝ REKORD! Tvoje finálne skóre je: " + skore + " (Dosiahol si Level " + level + ")");
+            // 💰 AUTOMATICKÉ SPUSTENIE VIDEO REKLAMY PRI GAME OVER
+            if (cgSDK) {
+                cgSDK.ad.requestAd("midgame", {
+                    adStarted: () => { console.log("Reklama spustená."); },
+                    adFinished: () => { vyhodnotenieKoncaHry(); },
+                    adError: () => { vyhodnotenieKoncaHry(); }
+                });
             } else {
-                alert("Koniec hry! Tvoje skóre: " + skore + " | Level: " + level);
+                vyhodnotenieKoncaHry();
             }
+        }
+    }
+
+    function vyhodnotenieKoncaHry() {
+        if (cgSDK) { cgSDK.game.gameplayStop(); } 
+        
+        if (skore > ulozeBestScore) {
+            localStorage.setItem("legoHighScore", skore);
+            ulozeBestScore = skore;
+            bestScoreText.innerText = skore;
+            alert("🎉 NOVÝ REKORD! Tvoje finálne skóre je: " + skore + " (Level " + level + ")");
+        } else {
+            alert("Koniec hry! Tvoje skóre: " + skore + " | Level: " + level);
         }
     }
 
     function restartHry() {
         initAudio();
+        
+        if (cgSDK) { cgSDK.game.gameplayStart(); } 
+        
         skore = 0;
         level = 1;
         cas = 15;
@@ -209,6 +235,11 @@
         
         casovyInterval = setInterval(odpocitavanie, 1000);
         skakaciInterval = setInterval(pohniKockou, rycshlostiLevelov[level]);
+    }
+
+    if (cgSDK) {
+        cgSDK.game.loadingStart();
+        setTimeout(() => { cgSDK.game.loadingStop(); }, 1000);
     }
 
     restartHry();
